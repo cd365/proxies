@@ -1,0 +1,9 @@
+# jetbrains
+.idea
+
+# mac
+.DS_Store
+
+# vscode
+.devcontainer
+.vscode
