@@ -469,21 +469,21 @@ func (s *Proxy) NewSocks5Conn(proxyAddress string, targetHost string, targetPort
 // TryHttp 尝试处理http或https请求
 func (s *Proxy) TryHttp(conn *Conn, read byte, proxyAddress string) {
 	reader := bufio.NewReader(conn)
-	req := []byte{read}
-	var err error
-	var line []byte
+	req := make([]byte, 1, 512)
+	req[0] = read
 	for {
-		line, _, err = reader.ReadLine()
+		line, _, err := reader.ReadLine()
 		if err != nil {
 			return
 		}
-		// each line of the http message is divided using 0x0a 0x0d
+		// each line of the http message is divided using 0x0d 0x0a \r\n
 		line = append(line, 0x0d, 0x0a)
 		req = append(req, line...)
 		if len(line) == 2 && line[0] == 0x0d && line[1] == 0x0a {
 			break
 		}
 	}
+
 	request, err := http.ReadRequest(bufio.NewReader(bytes.NewReader(req)))
 	if err != nil {
 		return
@@ -497,13 +497,22 @@ func (s *Proxy) TryHttp(conn *Conn, read byte, proxyAddress string) {
 		}
 		req = append(req, body...)
 	}
-	targets := strings.Split(request.Host, ":")
-	targetPort, err := strconv.Atoi(targets[1])
-	if err != nil {
-		return
+
+	targetHost := request.Host
+	targetPort := 80
+	last := strings.LastIndex(request.Host, ":")
+	if last == -1 {
+		if request.Method == http.MethodConnect {
+			targetPort = 443
+		}
+	} else {
+		targetHost = request.Host[:last]
+		if tmpPort, ter := strconv.Atoi(request.Host[last+1:]); ter == nil {
+			targetPort = tmpPort
+		}
 	}
 
-	proxyConn, err := s.NewSocks5Conn(proxyAddress, targets[0], targetPort)
+	proxyConn, err := s.NewSocks5Conn(proxyAddress, targetHost, targetPort)
 	if err != nil {
 		return
 	}
